@@ -1,0 +1,23 @@
+{
+  "version": "1",
+  "riskTierRules": {
+    "high": [
+      "src/execution/**",
+      "src/config/**",
+      "src/storage/database.ts",
+      ".env",
+      "risk-policy.json"
+    ],
+    "low": [
+      "**"
+    ]
+  },
+  "mergePolicy": {
+    "high": {
+      "requiredChecks": ["risk-policy-gate", "unit-tests", "manual-review"]
+    },
+    "low": {
+      "requiredChecks": ["unit-tests"]
+    }
+  }
+}
