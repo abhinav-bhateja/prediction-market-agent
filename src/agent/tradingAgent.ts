@@ -52,32 +52,66 @@ export class TradingAgent {
     return this.learning;
   }
 
+  /** Enforce stop-loss: close any position down more than STOP_LOSS_PCT. */
+  private async enforceStopLoss(markets: Market[]): Promise<void> {
+    const positions = this.repo.getPositions().filter((p) => p.quantity > 0);
+    await Promise.allSettled(
+      positions.map(async (pos) => {
+        const market = markets.find((m) => m.id === pos.marketId);
+        if (!market) return;
+
+        const markPrice = pos.side === 'YES' ? market.yesPrice : market.noPrice;
+        const pnlPct = (markPrice - pos.avgPrice) / pos.avgPrice;
+
+        if (pnlPct <= -config.STOP_LOSS_PCT) {
+          logger.warn('Stop-loss triggered', {
+            marketId: pos.marketId,
+            side: pos.side,
+            pnlPct: pnlPct.toFixed(4),
+            threshold: -config.STOP_LOSS_PCT
+          });
+          await this.broker.closePosition(pos, market);
+        }
+      })
+    );
+  }
+
+  private async processMarket(market: Market): Promise<AgentCycleResult> {
+    const snapshot = await this.ingestion.buildSnapshot(market);
+    const reasoning = await this.reasoning.analyze(snapshot);
+    const positions = this.repo.getPositions();
+    const bankroll = this.repo.getCashBalance();
+    const decision = this.decision.decide(reasoning, bankroll, positions);
+    const order = await this.broker.placeOrder({ decision, market, bankrollUsd: bankroll, positions });
+
+    const cycle: AgentCycleResult = {
+      marketId: market.id,
+      snapshot,
+      reasoning,
+      decision,
+      order: order ?? undefined
+    };
+
+    this.repo.logCycle(cycle);
+    return cycle;
+  }
+
   async runOneCycle(): Promise<AgentCycleResult[]> {
     const markets = await this.ingestion.getMarkets(15);
     this.status.activeMarkets = markets;
 
+    // Enforce stop-loss before placing new orders
+    await this.enforceStopLoss(markets);
+
+    // Process all markets in parallel
+    const settled = await Promise.allSettled(markets.map((m) => this.processMarket(m)));
+
     const cycleResults: AgentCycleResult[] = [];
-    for (const market of markets) {
-      try {
-        const snapshot = await this.ingestion.buildSnapshot(market);
-        const reasoning = await this.reasoning.analyze(snapshot);
-        const positions = this.repo.getPositions();
-        const bankroll = this.repo.getCashBalance();
-        const decision = this.decision.decide(reasoning, bankroll, positions);
-        const order = await this.broker.placeOrder({ decision, market, bankrollUsd: bankroll, positions });
-
-        const cycle: AgentCycleResult = {
-          marketId: market.id,
-          snapshot,
-          reasoning,
-          decision,
-          order: order ?? undefined
-        };
-
-        this.repo.logCycle(cycle);
-        cycleResults.push(cycle);
-      } catch (error) {
-        logger.error('Market cycle failed', { marketId: market.id, error });
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        cycleResults.push(result.value);
+      } else {
+        logger.error('Market cycle failed', { reason: result.reason });
       }
     }
 

@@ -9,4 +9,5 @@ export interface ExecuteContext {
 
 export interface ExecutionBroker {
   placeOrder(ctx: ExecuteContext): Promise<Order | null>;
+  closePosition(position: Position, market: Market): Promise<Order | null>;
 }

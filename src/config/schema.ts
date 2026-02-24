@@ -26,7 +26,10 @@ export const configSchema = z.object({
     .string()
     .default('https://feeds.reuters.com/reuters/worldNews,https://rss.cnn.com/rss/edition.rss'),
   REDDIT_SUBREDDITS: z.string().default('news,politics,worldnews'),
-  EVENT_CALENDAR_API_URL: z.string().url().optional().or(z.literal(''))
+  EVENT_CALENDAR_API_URL: z.string().url().optional().or(z.literal('')),
+
+  // Optional API key to protect the HTTP endpoints
+  API_KEY: z.string().optional()
 });
 
 export type AppConfig = z.infer<typeof configSchema>;

@@ -1,11 +1,22 @@
-import express from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import { config } from '../config/index.js';
 import type { TradingAgent } from '../agent/tradingAgent.js';
+
+const requireApiKey = (req: Request, res: Response, next: NextFunction): void => {
+  if (!config.API_KEY) { next(); return; }
+  const provided = req.headers['x-api-key'] ?? req.query['api_key'];
+  if (provided !== config.API_KEY) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  next();
+};
 
 export const createApiServer = (agent: TradingAgent) => {
   const app = express();
   app.use(express.json());
 
+  // Health is always public
   app.get('/health', (_req, res) => {
     const status = agent.getStatus();
     res.json({
@@ -17,6 +28,9 @@ export const createApiServer = (agent: TradingAgent) => {
       timestamp: new Date().toISOString()
     });
   });
+
+  // All other routes require API key when configured
+  app.use(requireApiKey);
 
   app.get('/markets', (_req, res) => {
     res.json({ markets: agent.getStatus().activeMarkets });
