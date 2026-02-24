@@ -26,7 +26,7 @@ export const configSchema = z.object({
     .string()
     .default('https://feeds.reuters.com/reuters/worldNews,https://rss.cnn.com/rss/edition.rss'),
   REDDIT_SUBREDDITS: z.string().default('news,politics,worldnews'),
-  EVENT_CALENDAR_API_URL: z.string().url().optional()
+  EVENT_CALENDAR_API_URL: z.string().url().optional().or(z.literal(''))
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
