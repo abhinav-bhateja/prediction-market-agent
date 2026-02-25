@@ -1,43 +1,8 @@
-import type { IngestedSnapshot, PricePoint, ReasoningResult } from '../types/domain.js';
+import type { IngestedSnapshot, ReasoningResult } from '../types/domain.js';
 import { clamp } from '../utils/math.js';
+import { avg, computeMomentum, computeVolatility } from '../utils/priceSignals.js';
 import { nowIso } from '../utils/time.js';
 import { LlmClient } from './llmClient.js';
-
-const avg = (arr: number[]): number => {
-  if (!arr.length) return 0;
-  return arr.reduce((a, b) => a + b, 0) / arr.length;
-};
-
-/**
- * Momentum: slope of a simple linear regression over recent prices, normalised to [-1, 1].
- * Positive = price trending up (bullish), negative = trending down (bearish).
- */
-function computeMomentum(history: PricePoint[]): number {
-  if (history.length < 3) return 0;
-  const n = history.length;
-  const xs = history.map((_, i) => i);
-  const ys = history.map((p) => p.price);
-  const xMean = avg(xs);
-  const yMean = avg(ys);
-  const num = xs.reduce((s, x, i) => s + (x - xMean) * (ys[i] - yMean), 0);
-  const den = xs.reduce((s, x) => s + (x - xMean) ** 2, 0);
-  const slope = den === 0 ? 0 : num / den; // price change per step
-  // Normalise: max plausible slope over n steps is ~1/n (full 0→1 move)
-  return clamp(slope * n, -1, 1);
-}
-
-/**
- * Volatility: std-dev of price changes. High vol → lower confidence.
- * Returns a value in [0, 1] where 0 = flat, 1 = very volatile.
- */
-function computeVolatility(history: PricePoint[]): number {
-  if (history.length < 2) return 0;
-  const changes = history.slice(1).map((p, i) => p.price - history[i].price);
-  const mean = avg(changes);
-  const variance = avg(changes.map((c) => (c - mean) ** 2));
-  const stdDev = Math.sqrt(variance);
-  return clamp(stdDev * 20, 0, 1); // scale: 0.05 daily move → 1.0
-}
 
 export class ReasoningEngine {
   constructor(private readonly llmClient = new LlmClient()) {}
