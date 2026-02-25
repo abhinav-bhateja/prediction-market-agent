@@ -21,7 +21,11 @@ const normalizeScore = (raw: number): number => {
 };
 
 export class SocialSentimentScraper {
-  private readonly subreddits = config.REDDIT_SUBREDDITS.split(',').map((s) => s.trim());
+  private readonly subreddits: string[];
+
+  constructor(subreddits?: string[]) {
+    this.subreddits = subreddits ?? config.REDDIT_SUBREDDITS.split(',').map((s) => s.trim());
+  }
 
   async fetchSignals(limitPerSub = 10): Promise<SocialSignal[]> {
     const signals: SocialSignal[] = [];
