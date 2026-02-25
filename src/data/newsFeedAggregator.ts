@@ -48,7 +48,11 @@ const parseRssItems = (xml: string, source: string): NewsItem[] => {
 };
 
 export class NewsFeedAggregator {
-  private readonly feeds = config.NEWS_RSS_FEEDS.split(',').map((s) => s.trim()).filter(Boolean);
+  private readonly feeds: string[];
+
+  constructor(feeds?: string[]) {
+    this.feeds = feeds ?? config.NEWS_RSS_FEEDS.split(',').map((s) => s.trim()).filter(Boolean);
+  }
 
   async fetchLatest(limit = 30): Promise<NewsItem[]> {
     const all: NewsItem[] = [];
