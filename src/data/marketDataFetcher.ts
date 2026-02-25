@@ -1,6 +1,6 @@
 import { config } from '../config/index.js';
 import type { Market } from '../types/domain.js';
-import { fetchWithRetry } from '../utils/retry.js';
+import { fetchWithRetry, type RetryOptions } from '../utils/retry.js';
 
 interface PolymarketRawMarket {
   id?: string;
@@ -43,6 +43,8 @@ const sampleMarkets: Market[] = [
 ];
 
 export class MarketDataFetcher {
+  constructor(private readonly retryOpts: RetryOptions = { attempts: 3, baseDelayMs: 1000 }) {}
+
   async getActiveMarkets(limit = 20): Promise<Market[]> {
     const url = `${config.POLYMARKET_API_BASE_URL}/markets?closed=false&limit=${limit}`;
 
@@ -50,7 +52,7 @@ export class MarketDataFetcher {
       const res = await fetchWithRetry(
         url,
         { headers: config.POLYMARKET_API_KEY ? { Authorization: `Bearer ${config.POLYMARKET_API_KEY}` } : undefined },
-        { attempts: 3, baseDelayMs: 1000 }
+        this.retryOpts
       );
 
       if (!res.ok) return sampleMarkets;

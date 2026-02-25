@@ -1,6 +1,6 @@
 import type { PricePoint } from '../types/domain.js';
 import { config } from '../config/index.js';
-import { fetchWithRetry } from '../utils/retry.js';
+import { fetchWithRetry, type RetryOptions } from '../utils/retry.js';
 import { logger } from '../utils/logger.js';
 
 interface ClobHistoryEntry {
@@ -17,6 +17,8 @@ interface ClobHistoryResponse {
  * Returns an empty array on any failure — callers treat missing history gracefully.
  */
 export class PriceHistoryFetcher {
+  constructor(private readonly retryOpts: RetryOptions = { attempts: 2, baseDelayMs: 500 }) {}
+
   async fetch(clobTokenId: string, interval = '1h', fidelity = 24): Promise<PricePoint[]> {
     const url = `${config.POLYMARKET_API_BASE_URL}/prices-history?tokenID=${encodeURIComponent(clobTokenId)}&interval=${interval}&fidelity=${fidelity}`;
 
@@ -24,7 +26,7 @@ export class PriceHistoryFetcher {
       const res = await fetchWithRetry(
         url,
         { headers: config.POLYMARKET_API_KEY ? { Authorization: `Bearer ${config.POLYMARKET_API_KEY}` } : undefined },
-        { attempts: 2, baseDelayMs: 500 }
+        this.retryOpts
       );
 
       if (!res.ok) return [];
