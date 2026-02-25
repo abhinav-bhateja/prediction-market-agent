@@ -1,38 +1,54 @@
+import { XMLParser } from 'fast-xml-parser';
 import { config } from '../config/index.js';
 import type { NewsItem } from '../types/domain.js';
 
-const parseRssItems = (xml: string, source: string): NewsItem[] => {
-  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-  const titleRegex = /<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/;
-  const linkRegex = /<link>(.*?)<\/link>/;
-  const dateRegex = /<pubDate>(.*?)<\/pubDate>/;
-  const descRegex = /<description><!\[CDATA\[(.*?)\]\]><\/description>|<description>(.*?)<\/description>/;
+const parser = new XMLParser({ ignoreAttributes: false, cdataPropName: '__cdata' });
 
-  const items: NewsItem[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = itemRegex.exec(xml)) !== null) {
-    const block = match[1];
-    const titleMatch = block.match(titleRegex);
-    const linkMatch = block.match(linkRegex);
-    const dateMatch = block.match(dateRegex);
-    const descMatch = block.match(descRegex);
-    const title = titleMatch?.[1] ?? titleMatch?.[2] ?? 'Untitled';
-    const url = linkMatch?.[1] ?? '';
-    if (!url) continue;
-    items.push({
-      id: `${source}:${url}`,
-      title,
-      source,
-      url,
-      publishedAt: dateMatch?.[1] ? new Date(dateMatch[1]).toISOString() : new Date().toISOString(),
-      summary: descMatch?.[1] ?? descMatch?.[2] ?? ''
+const parseRssItems = (xml: string, source: string): NewsItem[] => {
+  try {
+    const doc = parser.parse(xml);
+    const channel = doc?.rss?.channel ?? doc?.feed;
+    if (!channel) return [];
+
+    const rawItems: unknown[] = Array.isArray(channel.item)
+      ? channel.item
+      : channel.item
+        ? [channel.item]
+        : Array.isArray(channel.entry)
+          ? channel.entry
+          : channel.entry
+            ? [channel.entry]
+            : [];
+
+    return rawItems.flatMap((item) => {
+      if (typeof item !== 'object' || item === null) return [];
+      const i = item as Record<string, unknown>;
+
+      const asObj = (v: unknown): Record<string, unknown> => (typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {});
+      const title = String(asObj(i['title'])['__cdata'] ?? i['title'] ?? 'Untitled');
+      const linkObj = asObj(i['link']);
+      const url = String(linkObj['#text'] ?? linkObj['@_href'] ?? i['link'] ?? '');
+      if (!url) return [];
+
+      const pubDate = String(i['pubDate'] ?? i['published'] ?? i['updated'] ?? '');
+      const summary = String(asObj(i['description'])['__cdata'] ?? i['description'] ?? i['summary'] ?? '');
+
+      return [{
+        id: `${source}:${url}`,
+        title,
+        source,
+        url,
+        publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
+        summary
+      } satisfies NewsItem];
     });
+  } catch {
+    return [];
   }
-  return items;
 };
 
 export class NewsFeedAggregator {
-  private readonly feeds = config.NEWS_RSS_FEEDS.split(',').map((s) => s.trim());
+  private readonly feeds = config.NEWS_RSS_FEEDS.split(',').map((s) => s.trim()).filter(Boolean);
 
   async fetchLatest(limit = 30): Promise<NewsItem[]> {
     const all: NewsItem[] = [];

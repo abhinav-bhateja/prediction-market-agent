@@ -1,5 +1,6 @@
 import { config } from '../config/index.js';
 import type { Market } from '../types/domain.js';
+import { fetchWithRetry } from '../utils/retry.js';
 
 interface PolymarketRawMarket {
   id?: string;
@@ -12,6 +13,8 @@ interface PolymarketRawMarket {
   tags?: string[];
   active?: boolean;
   closed?: boolean;
+  clobTokenIds?: string[]; // [yesTokenId, noTokenId]
+  tokens?: Array<{ token_id?: string; outcome?: string }>;
 }
 
 const sampleMarkets: Market[] = [
@@ -44,13 +47,13 @@ export class MarketDataFetcher {
     const url = `${config.POLYMARKET_API_BASE_URL}/markets?closed=false&limit=${limit}`;
 
     try {
-      const res = await fetch(url, {
-        headers: config.POLYMARKET_API_KEY ? { Authorization: `Bearer ${config.POLYMARKET_API_KEY}` } : undefined
-      });
+      const res = await fetchWithRetry(
+        url,
+        { headers: config.POLYMARKET_API_KEY ? { Authorization: `Bearer ${config.POLYMARKET_API_KEY}` } : undefined },
+        { attempts: 3, baseDelayMs: 1000 }
+      );
 
-      if (!res.ok) {
-        return sampleMarkets;
-      }
+      if (!res.ok) return sampleMarkets;
 
       const data = (await res.json()) as PolymarketRawMarket[];
       const parsed = data
@@ -58,6 +61,13 @@ export class MarketDataFetcher {
         .map<Market>((m) => {
           const yes = Number(m.outcomePrices?.[0] ?? 0.5);
           const no = Number(m.outcomePrices?.[1] ?? 1 - yes);
+
+          // Extract YES token ID — try clobTokenIds array first, then tokens array
+          const clobTokenId =
+            m.clobTokenIds?.[0] ??
+            m.tokens?.find((t) => t.outcome?.toUpperCase() === 'YES')?.token_id ??
+            undefined;
+
           return {
             id: m.id ?? m.slug ?? crypto.randomUUID(),
             question: m.question ?? 'Unknown market',
@@ -67,7 +77,8 @@ export class MarketDataFetcher {
             liquidity: Number(m.liquidity ?? 0),
             eventDate: m.endDate,
             tags: m.tags ?? [],
-            isResolved: m.closed ?? false
+            isResolved: m.closed ?? false,
+            clobTokenId
           };
         })
         .slice(0, limit);

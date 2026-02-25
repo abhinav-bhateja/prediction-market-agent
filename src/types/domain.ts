@@ -1,6 +1,11 @@
 export type MarketSide = 'YES' | 'NO';
 export type TradeAction = 'BUY' | 'SELL' | 'HOLD';
 
+export interface PricePoint {
+  timestamp: string; // ISO
+  price: number;
+}
+
 export interface Market {
   id: string;
   question: string;
@@ -11,6 +16,7 @@ export interface Market {
   liquidity: number;
   tags: string[];
   isResolved: boolean;
+  clobTokenId?: string; // YES outcome token ID for CLOB price-history queries
 }
 
 export interface NewsItem {
@@ -46,6 +52,7 @@ export interface IngestedSnapshot {
   news: NewsItem[];
   social: SocialSignal[];
   events: CalendarEvent[];
+  priceHistory: PricePoint[]; // recent CLOB price history for YES outcome
 }
 
 export interface ReasoningResult {

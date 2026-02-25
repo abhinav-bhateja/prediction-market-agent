@@ -3,6 +3,7 @@ import { nowIso } from '../utils/time.js';
 import { EventCalendarTracker } from './eventCalendarTracker.js';
 import { MarketDataFetcher } from './marketDataFetcher.js';
 import { NewsFeedAggregator } from './newsFeedAggregator.js';
+import { PriceHistoryFetcher } from './priceHistoryFetcher.js';
 import { SocialSentimentScraper } from './socialSentimentScraper.js';
 
 export class DataIngestionService {
@@ -10,7 +11,8 @@ export class DataIngestionService {
     private readonly news = new NewsFeedAggregator(),
     private readonly social = new SocialSentimentScraper(),
     private readonly markets = new MarketDataFetcher(),
-    private readonly calendar = new EventCalendarTracker()
+    private readonly calendar = new EventCalendarTracker(),
+    private readonly priceHistory = new PriceHistoryFetcher()
   ) {}
 
   async getMarkets(limit = 20): Promise<Market[]> {
@@ -18,10 +20,11 @@ export class DataIngestionService {
   }
 
   async buildSnapshot(market: Market): Promise<IngestedSnapshot> {
-    const [news, social, events] = await Promise.all([
+    const [news, social, events, priceHistory] = await Promise.all([
       this.news.fetchLatest(),
       this.social.fetchSignals(),
-      this.calendar.upcoming()
+      this.calendar.upcoming(),
+      market.clobTokenId ? this.priceHistory.fetch(market.clobTokenId) : Promise.resolve([])
     ]);
 
     const lowerQ = market.question.toLowerCase();
@@ -45,7 +48,8 @@ export class DataIngestionService {
       market,
       news: relevantNews.slice(0, 15),
       social: relevantSocial.slice(0, 15),
-      events: relevantEvents.slice(0, 10)
+      events: relevantEvents.slice(0, 10),
+      priceHistory
     };
   }
 }
